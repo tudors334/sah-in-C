@@ -1,3 +1,5 @@
+//acesta nu este main-ul proiectului, ci doar primul fisier adaugat pe github in martie si am uitat sa il redenumesc, scuze de neinteleger
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
