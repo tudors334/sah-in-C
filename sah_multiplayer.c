@@ -10,7 +10,8 @@
 #define PORT 12345
 #define BUF_SIZE 64
 
-int coloana(char c) {
+int coloana(char c) 
+{
     return toupper(c) - 'A';
 }
 
@@ -18,7 +19,8 @@ int randul(char c) {
     return '8' - c;
 }
 
-void parseaza_mutare(const char *input, int *fromRow, int *fromCol, int *toRow, int *toCol) {
+void parseaza_mutare(const char *input, int *fromRow, int *fromCol, int *toRow, int *toCol)
+ {
     *fromCol = coloana(input[0]);
     *fromRow = randul(input[1]);
     *toCol = coloana(input[3]);
@@ -43,59 +45,110 @@ int primeste(int sockfd, char *buf, int size)
     return recv(sockfd, buf, size - 1, 0);
 }
 
-void ruleaza_joc(int sockfd, int sunt_server) 
+void ruleaza_joc(Board *board, int este_server) 
 {
-    int tura_mea = sunt_server; // Serverul = alb (mută primul)
-    initBoard();
+    char input[20];
+    int remiza_propusa = 0;
+    int rand = 1; // 1 - alb, 0 - negru
+    int joc_terminat = 0;
 
-    while (1) {
-        printBoard();
-        if (sahmat(sunt_server ? P_WHITE : P_BLACK)) {
-            printf("ȘAH MAT! %s câștigă!\n", sunt_server ? "Negrul" : "Alb");
+    afiseaza_tabla(*board);
+
+    while (!joc_terminat) 
+    {
+        printf("Este randul %s\n", rand ? "albului" : "negrului");
+
+        if (regele_in_sah(*board, rand))
+            {
+            if (este_sah_mat(*board, rand)) 
+            {
+                printf("Șah mat! %s a pierdut.\n", rand ? "Alb" : "Negru");
+                break;
+            } 
+            else 
+            {
+                printf("%s este în șah!\n", rand ? "Alb" : "Negru");
+            }
+        } 
+        else if (este_pat(*board, rand)) 
+        {
+            printf("Remiză prin pat!\n");
             break;
         }
-        if (stalemate(sunt_server ? P_WHITE : P_BLACK, 0)) {
-            printf("Pat! Remiză.\n");
-            break;
+
+        printf("Introdu mutarea (ex: E2 E4 sau 'draw'): ");
+        if (este_server)
+            fgets(input, sizeof(input), stdin);
+        else
+            recv(socket_id, input, sizeof(input), 0); 
+
+        input[strcspn(input, "\n")] = 0; 
+
+        if (strcmp(input, "draw") == 0)
+        {
+            if (remiza_propusa) 
+            {
+                printf("Remiză acceptată. Jocul s-a încheiat.\n");
+                break;
+            }
+            else
+                {
+                printf("Remiză propusă. Dacă oponentul scrie 'draw', jocul se încheie remiză.\n");
+                remiza_propusa = 1;
+                rand = !rand;
+                continue;
+            }
+        }
+        else
+        {
+            remiza_propusa = 0;
         }
 
-        if (tura_mea) {
-            char buf[BUF_SIZE];
-            int fr, fc, tr, tc;
-
-            do {
-                citeste_mutare(buf, BUF_SIZE);
-                parseaza_mutare(buf, &fr, &fc, &tr, &tc);
-            } while (!checkIfMoveIsPossible(fc, fr, tc, tr, sunt_server ? P_WHITE : P_BLACK));
-
-            // Execută și trimite mutarea
-            board[tr][tc] = board[fr][fc];
-            board[fr][fc].type = EMPTY;
-            board[fr][fc].color = NONE;
-            trimite(sockfd, buf);
-        } else {
-            char buf[BUF_SIZE];
-            printf("Aștept mutarea adversarului...\n");
-            primeste(sockfd, buf, BUF_SIZE);
-            int fr, fc, tr, tc;
-            parseaza_mutare(buf, &fr, &fc, &tr, &tc);
-
-            // Execută mutarea
-            board[tr][tc] = board[fr][fc];
-            board[fr][fc].type = EMPTY;
-            board[fr][fc].color = NONE;
-            printf("Mutarea primită: %s\n", buf);
+        int x1, y1, x2, y2;
+        if (sscanf(input, "%c%d %c%d", &y1, &x1, &y2, &x2) != 4) {
+            printf("Format invalid. Folosește formatul A2 A4 sau 'draw'.\n");
+            continue;
         }
-        tura_mea = !tura_mea;
+
+        x1 = 8 - x1;
+        y1 = y1 - 'A';
+        x2 = 8 - x2;
+        y2 = y2 - 'A';
+
+        if (!mutare_legala(*board, x1, y1, x2, y2, rand)) {
+            printf("Mutare ilegală.\n");
+            continue;
+        }
+
+        if (pion_promovat(board, x1, y1, x2, rand)) 
+        {
+            printf("Promovare! Introdu piesa dorită (Q, R, B, N): ");
+            char promovare;
+            if (este_server)
+                scanf(" %c", &promovare);
+            else
+                recv(socket_id, &promovare, 1, 0); // exemplu generic
+
+            promoveaza_pion(board, x2, y2, promovare, rand);
+        }
+        else 
+        {
+            muta_piesa(board, x1, y1, x2, y2);
+        }
+
+        afiseaza_tabla(*board);
+        rand = !rand;
     }
 }
 
-int server_mode() {
+int server_mode() 
+{
     int server_fd, client_fd;
     struct sockaddr_in address;
     socklen_t addrlen = sizeof(address);
 
-    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
+    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) 
+    {
         perror("socket");
         exit(1);
     }
@@ -104,7 +157,8 @@ int server_mode() {
     address.sin_addr.s_addr = INADDR_ANY;
     address.sin_port = htons(PORT);
 
-    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
+    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) 
+    {
         perror("bind");
         exit(1);
     }
@@ -115,7 +169,8 @@ int server_mode() {
     }
 
     printf("Aștept un jucător la portul %d...\n", PORT);
-    if ((client_fd = accept(server_fd, (struct sockaddr *)&address, &addrlen)) < 0) {
+    if ((client_fd = accept(server_fd, (struct sockaddr *)&address, &addrlen)) < 0) 
+    {
         perror("accept");
         exit(1);
     }
@@ -125,11 +180,13 @@ int server_mode() {
     return client_fd;
 }
 
-int client_mode(const char *ip) {
+int client_mode(const char *ip) 
+{
     int sock = 0;
     struct sockaddr_in serv_addr;
 
-    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) 
+    {
         perror("socket");
         exit(1);
     }
@@ -137,12 +194,14 @@ int client_mode(const char *ip) {
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_port = htons(PORT);
 
-    if (inet_pton(AF_INET, ip, &serv_addr.sin_addr) <= 0) {
+    if (inet_pton(AF_INET, ip, &serv_addr.sin_addr) <= 0)
+    {
         printf("Adresă IP invalidă\n");
         exit(1);
     }
 
-    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) 
+    {
         perror("connect");
         exit(1);
     }
@@ -161,13 +220,16 @@ int main()
     printf("2. Client (negru)\n");
     printf("Alege: ");
     scanf("%d", &opt);
-    getchar(); // curăță '\n'
+    getchar();
 
     int sockfd;
-    if (opt == 1) {
+    if (opt == 1) 
+    {
         sockfd = server_mode();
         ruleaza_joc(sockfd, 1); // server = alb
-    } else {
+    }
+    else
+        {
         printf("IP server: ");
         fgets(ip, sizeof(ip), stdin);
         ip[strcspn(ip, "\n")] = 0;
